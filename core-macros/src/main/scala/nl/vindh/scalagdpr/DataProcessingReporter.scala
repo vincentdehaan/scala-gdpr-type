@@ -17,7 +17,7 @@ object DataProcessingReporter {
     val TypeApply(_, purposeTree :: subjectsTree :: recipientsTree :: hTree :: Nil) = c.macroApplication
 
     // TODO: analyze the real type tree instead of the string representation
-    val dataTypes = hTree.toString.split(" :: ").dropRight(1).map(dt => dt.split("\"").tail.head)
+    val dataTypes = hTree.toString.split(" :: ").dropRight(1).map(dt => if(dt.contains("\"")) dt.split("\"").tail.head else dt)
 
     val report =
       s"""

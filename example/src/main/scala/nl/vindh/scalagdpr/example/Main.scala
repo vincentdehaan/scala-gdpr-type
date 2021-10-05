@@ -1,31 +1,29 @@
 package nl.vindh.scalagdpr.example
 
-import nl.vindh.scalagdpr.DataProcessingJustification
+import cats.Monad
+import cats.data.OptionT
+import nl.vindh.scalagdpr.{DataProcessingJustification, ProtectedDataT}
 import nl.vindh.scalagdpr.example.repo.{MockMedicalRecordRepo, MockPersonRepo}
 import shapeless.HNil
 
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 object Main extends App {
   val personRepo = new MockPersonRepo
   val medicalRecordRepo = new MockMedicalRecordRepo
 
-  val medicalReport = for {
-    protectedPerson <- personRepo.getPersonById("3")
-    protectedMedicalRecord <- medicalRecordRepo.getMedicalRecordByPersonId("3")
+  val medicalReport = (for {
+    person <- ProtectedDataT(personRepo.getPersonByName("Jane Doe"))
+    medicalRecord <- ProtectedDataT(medicalRecordRepo.getMedicalRecordByPersonId(person.id))
   } yield {
-    for {
-      person <- protectedPerson
-      medicalRecord <- protectedMedicalRecord
-    } yield {
-      s"""Medical report
-         |Name: ${person.name}
-         |Address: ${person.address}
-         |
-         |Diseases: ${medicalRecord.diseases.mkString(", ")}
-         |""".stripMargin
-    }
-  }
+    s"""Medical report
+       |Name: ${person.name}
+       |Address: ${person.address}
+       |
+       |Diseases: ${medicalRecord.diseases.mkString(", ")}
+       |""".stripMargin
+  }).value
 
   medicalReport.foreach {
     protectedReport => println(
@@ -37,4 +35,16 @@ object Main extends App {
       )
     )
   }
+
+
+  val optT =
+    for {
+      a <- OptionT(Future.successful[Option[Int]](Some(3)))
+      b <- OptionT(f(a))
+    } yield b
+
+
+optT.value.foreach(println)
+  Thread.sleep(400)
+  def f(i: Int): Future[Option[Int]] = Future.successful(Some(i + 2))
 }
