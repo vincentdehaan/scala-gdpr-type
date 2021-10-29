@@ -3,3 +3,11 @@
 .idea
 target/
 .bsp
+slides/*.aux
+slides/*.nav
+slides/*.pdf
+slides/*.snm
+slides/*.synctex.gz
+slides/*.toc
+slides/*.vrb
+slides/*.out

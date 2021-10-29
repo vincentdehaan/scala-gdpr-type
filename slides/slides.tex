@@ -1,0 +1,258 @@
+\documentclass[aspectratio=169]{beamer}
+\usepackage[T1]{fontenc}
+\usepackage{beramono}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+\lstdefinestyle{myScalastyle}{
+  frame=tb,
+  language=scala,
+  aboveskip=2mm,
+  belowskip=2mm,
+  showstringspaces=false,
+  columns=flexible,
+  basicstyle={\footnotesize\ttfamily},
+  numbers=none,
+  numberstyle=\footnotesize\color{gray},
+  keywordstyle=\color{blue},
+  commentstyle=\color{dkgreen},
+  stringstyle=\color{mauve},
+  frame=single,
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=3,
+}
+\beamertemplatenavigationsymbolsempty
+
+\usepackage[english]{babel}
+
+
+\title{Enhance GDPR compliance using type level programming}
+\author{Vincent de Haan}
+\date{}
+
+\begin{document}
+
+\frame{\maketitle}
+
+\frame[plain]{
+  \frametitle{Who am I?}
+
+  \begin{itemize}
+    \item Self-employed Scala engineer $\ldots$
+    \item $\dots$ in possession of a law degree.
+  \end{itemize}
+}
+
+\frame{
+  \frametitle{Goals for today}
+
+  \begin{itemize}
+  \item Learn something about \textit{type level programming}, \textit{macros} and \textit{monads}.
+  \item Apply this knowledge to a real business problem.
+  \end{itemize}
+}
+
+\frame{
+  \frametitle{Art. 30, sect 1 of the General Data Protection Regulation (GDPR)}
+
+  \begin{quote}
+  Each controller [...] shall maintain a \textbf{record of processing activities} under its responsibility. That record shall contain all of the following information:
+
+[...]
+
+(b) the purposes of the processing;
+
+(c) [...] the categories of personal data;
+
+(d) the categories of recipients to whom the personal data have been or will be disclosed [...];
+  \end{quote}
+}
+
+\frame{
+  \frametitle{The problem}
+We need to document all our \textbf{processing activities}, but $\ldots$
+  \begin{itemize}
+  \item $\ldots$ documentation is always incomplete,
+  \item $\ldots$ documentation is never up-to-date,
+  \item $\ldots$ we have "hidden" features (data export, logging, bugs, admin tools) that are not documented.
+  \end{itemize}
+  
+}
+
+\frame{
+  \frametitle{A crazy idea}
+
+  Can we export the documentation from the code?
+}
+\frame{
+  \frametitle{TODO TODO TODO}
+
+
+}
+
+\frame{
+  \frametitle{New idea: a \texttt{ProtectedData[\_]} monad } 
+
+  \begin{itemize}
+  \item Keep the protected data inside the \texttt{ProtectedData[\_]}
+  \item Unwrap it at the and, and report it's purpose
+  \end{itemize}
+
+}
+
+\begin{frame}[fragile]
+\frametitle{The \texttt{ProtectedData} class}
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+class ProtectedData[T, H <: HList] private[scalagdpr](private[scalagdpr] val value: T) {
+
+  def get(justification: DataProcessingJustification[H]): T = value
+}
+\end{lstlisting}
+\pause
+\begin{lstlisting}[style=myScalastyle,frame=none]
+class DataProcessingJustification[H <: HList] private[scalagdpr]
+
+object DataProcessingJustification {
+
+  def apply[Purpose, Subjects, Recipients] = new Object {
+    def apply[H <: HList](implicit r: DataProcessingReporter[Purpose, Subjects, Recipients, H]) =
+      new DataProcessingJustification[H]
+  }
+}
+\end{lstlisting}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{TODO TODO The \texttt{DataProcessingReporter}}
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+class DataProcessingReporter[Purpose, Subjects, Recipients, H] {}
+
+object DataProcessingReporter {
+  implicit def reporter[Purpose, Subjects, Recipients, H <: HList]: DataProcessingReporter[Purpose, Subjects, Recipients, H] =
+  macro report_impl[Purpose, Subjects, Recipients, H]
+
+  def report_impl[Purpose, Subjects, Recipients, H](c: Context): c.Expr[DataProcessingReporter[Purpose, Subjects, Recipients, H]] = {
+    import c.universe._
+    val TypeApply(_, purposeTree :: subjectsTree :: recipientsTree :: hTree :: Nil) = c.macroApplication
+
+    val dataTypes = hTree.toString.split(" :: ").dropRight(1).map(dt => if(dt.contains("\"")) dt.split("\"").tail.head else dt)
+
+    val report =
+      s"""
+         |>>> Data processing:
+         |Purpose: ${purposeTree.toString()}
+         |Subjects: ${subjectsTree.toString()}
+         |Recipients: ${recipientsTree.toString()}
+         |Data types: ${dataTypes.mkString(", ")}
+         |""".stripMargin
+
+    println(report)
+    c.Expr(q"new nl.vindh.scalagdpr.DataProcessingReporter[$purposeTree, $subjectsTree, $recipientsTree, $hTree]")
+  }
+\end{lstlisting}
+
+\end{frame}
+
+
+\begin{frame}[fragile]
+\frametitle{Overview}
+
+\begin{enumerate}
+\item
+\begin{lstlisting}[style=myScalastyle,frame=none]
+val protectedData: ProtectedData[Int, T]
+protectedData.get(???)
+\end{lstlisting}
+We need a \footnotesize{\texttt{DataProcessingJustification[H]}} TODO size
+\pause
+\item
+\begin{lstlisting}[style=myScalastyle,frame=none]
+ProtectedDataJustification["My purpose", "Some subjects", "And recipients"]
+\end{lstlisting}
+We define the purpose using \textit{literal types}.
+\pause
+\item
+\begin{lstlisting}[style=myScalastyle,frame=none]
+ProtectedDataJustification["My purpose", "Some subjects", "And recipients"].apply
+\end{lstlisting}
+\footnotesize{\texttt{T}} is inferred to create a \footnotesize{\texttt{DataProcessingJustification[T]}}.
+\pause
+\end{enumerate}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Overview II}
+
+\begin{enumerate}
+\item[4.]
+\begin{lstlisting}[style=myScalastyle,frame=none]
+ProtectedDataJustification["My purpose", "Some subjects", "And recipients"].apply(implicit r: DataProcessingReporter[Purpose, Subjects, Recipients, H])
+\end{lstlisting}
+We need to search for an implicit \texttt{DataProcessingReporter} with the right type parameters.
+\item[5.]
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+  implicit def reporter[Purpose, Subjects, Recipients, H <: HList]: DataProcessingReporter[Purpose, Subjects, Recipients, H] =
+  macro report_impl[Purpose, Subjects, Recipients, H]
+\end{lstlisting}
+This code runs the macro and creates a \texttt{DataProcessingReporter}.
+\end{enumerate}
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{A simple repository}
+
+\begin{columns}
+\begin{column}{0.3\textwidth}
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+case class Patient(
+  id: String,
+  name: String,
+  address: String)
+  
+case class MedicalRecord(
+  id: String,
+  patientId: String,
+  disease: String,
+  treatment: String)
+\end{lstlisting}
+
+
+\end{column}
+\pause
+\vrule
+\begin{column}{0.7\textwidth}  
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+type ProtectedDataSource[T] = ProtectedData[T, shapeless.::[T, HNil]]  
+
+trait PatientRepository {
+  def getPatientById: ProtectedDataSource[Patient]
+}
+
+class PatientRepositoryImpl {
+  def getPatientById: ProtectedDataSource[Patient] =
+    ProtectedData {
+      // get the patient
+    }
+}
+
+\end{lstlisting}
+
+
+\end{column}
+\end{columns}
+
+\end{frame}
+
+\end{document}

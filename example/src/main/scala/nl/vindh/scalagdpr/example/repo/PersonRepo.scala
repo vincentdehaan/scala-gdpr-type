@@ -1,5 +1,6 @@
 package nl.vindh.scalagdpr.example.repo
 
+import cats.Id
 import nl.vindh.scalagdpr._
 import nl.vindh.scalagdpr.example.model.Person
 import shapeless.HNil
@@ -22,7 +23,7 @@ class MockPersonRepo extends PersonRepo {
   ] =
     Future.successful {
       ProtectedData {
-        Person(id, "John Doe", "1 Wall Street")
+        Person(id, "John Doe", "1 Wall Street"): Id[Person]
       }
     }
 

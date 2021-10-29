@@ -1,8 +1,10 @@
 package nl.vindh.scalagdpr
 
-import shapeless.{HList, HNil, Typeable}
+import cats.Id
+import shapeless.{HList, HNil, LabelledGeneric, Typeable}
 import shapeless.ops.hlist
-import shapeless.ops.hlist.Prepend
+import shapeless.ops.hlist.{Length, Prepend}
+import shapeless.ops.record._
 
 import scala.reflect.ClassTag
 
@@ -21,11 +23,18 @@ class ProtectedData[T, H <: HList] private[scalagdpr](private[scalagdpr] val val
     ProtectedData {
       f(value)
     }
+
+  ///implicit class ProtectedDataWithExtract[T](pd: ProtectedData[Id, T, shapeless.::[Product, HNil]]) {
+  //  def extract[FieldName <: Singleton, E](implicit gen: LabelledGeneric[T]): ProtectedData[Id, T, shapeless.::[FieldName, HNil]] = {
+  //    gen.toMap
+  //  }
+  //}
 }
 
 
 object ProtectedData {
   def apply[T, H <: HList](value: T): ProtectedData[T, H] = new ProtectedData(value)
+  def applyF[F[_], T, H <: HList](value: F[T]): ProtectedData[F[T], H] = new ProtectedData(value)
 }
 
 class DataProcessingJustification[H <: HList] private[scalagdpr] {}
@@ -42,6 +51,10 @@ class WithRecipients[Purpose, Subjects, Recipients] private[scalagdpr] {
 object DataProcessingJustification {
 
   def withPurpose[T]: WithPurpose[T] = new WithPurpose[T]
+
+  def apply[Purpose, Subjects, Recipients] = new Object {
+    def apply[H <: HList](implicit r: DataProcessingReporter[Purpose, Subjects, Recipients, H]) = new DataProcessingJustification[H]
+  }
 
   private[scalagdpr] def unsafeJustification[H <: HList] = new DataProcessingJustification[H] {}
 

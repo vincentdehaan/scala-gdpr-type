@@ -1,6 +1,6 @@
 package nl.vindh.scalagdpr.example
 
-import cats.Monad
+import cats.{Id, Monad}
 import cats.data.OptionT
 import nl.vindh.scalagdpr.{DataProcessingJustification, ProtectedDataT}
 import nl.vindh.scalagdpr.example.repo.{MockMedicalRecordRepo, MockPersonRepo}
@@ -13,15 +13,30 @@ object Main extends App {
   val personRepo = new MockPersonRepo
   val medicalRecordRepo = new MockMedicalRecordRepo
 
+  val prices: Map[String, Float] = Map()
+
+  val cost = medicalRecordRepo.getMedicalRecordsByPersonId("person1").map {
+    recordsP => recordsP.map {
+      records => records.map(r => prices(r.treatment)).sum
+    }
+  }
+
+  val count = medicalRecordRepo.getMedicalRecordsByPersonId("person1").map {
+    recordsP => recordsP.map (_.size)
+  }
+
+  val countsync = medicalRecordRepo.getMedicalRecordsByPersonIdSync("person1")
+    .map(_.size)
+
   val medicalReport = (for {
     person <- ProtectedDataT(personRepo.getPersonByName("Jane Doe"))
-    medicalRecord <- ProtectedDataT(medicalRecordRepo.getMedicalRecordByPersonId(person.id))
+    medicalRecords <- ProtectedDataT(medicalRecordRepo.getMedicalRecordsByPersonId(person.id))
   } yield {
     s"""Medical report
        |Name: ${person.name}
        |Address: ${person.address}
        |
-       |Diseases: ${medicalRecord.diseases.mkString(", ")}
+       |Treatments: ${medicalRecords.map(_.treatment).mkString(", ")}
        |""".stripMargin
   }).value
 
@@ -36,6 +51,11 @@ object Main extends App {
     )
   }
 
+  cost.foreach {
+    costP => println(
+      costP.get(DataProcessingJustification["Purp", "Subj", "Recps"].apply)
+    )
+  }
 
   val optT =
     for {
