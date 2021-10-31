@@ -1,70 +1,38 @@
 package nl.vindh.scalagdpr.example
 
+import akka.actor.ActorSystem
+import akka.actor.typed.scaladsl.Behaviors
+import akka.http.scaladsl.Http
 import cats.{Id, Monad}
 import cats.data.OptionT
+import nl.vindh.scalagdpr.example.api.ReportApi
 import nl.vindh.scalagdpr.{DataProcessingJustification, ProtectedDataT}
 import nl.vindh.scalagdpr.example.repo.{MockMedicalRecordRepo, MockPersonRepo}
+import nl.vindh.scalagdpr.example.service.ReportService
 import shapeless.HNil
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.io.StdIn
 
 object Main extends App {
+  implicit val system = ActorSystem("my-system")
+  // needed for the future flatMap/onComplete in the end
+  implicit val executionContext = system.dispatcher
+
   val personRepo = new MockPersonRepo
   val medicalRecordRepo = new MockMedicalRecordRepo
 
-  val prices: Map[String, Float] = Map()
+  val reportService = new ReportService(personRepo, medicalRecordRepo)
 
-  val cost = medicalRecordRepo.getMedicalRecordsByPersonId("person1").map {
-    recordsP => recordsP.map {
-      records => records.map(r => prices(r.treatment)).sum
-    }
-  }
+  val reportApi = new ReportApi(reportService)
 
-  val count = medicalRecordRepo.getMedicalRecordsByPersonId("person1").map {
-    recordsP => recordsP.map (_.size)
-  }
+  val bindingFuture = Http().newServerAt("localhost", 8080).bind(reportApi.route)
 
-  val countsync = medicalRecordRepo.getMedicalRecordsByPersonIdSync("person1")
-    .map(_.size)
+  println(s"Server now online. Please navigate to http://localhost:8080/hello\nPress RETURN to stop...")
+  StdIn.readLine() // let it run until user presses return
+  bindingFuture
+    .flatMap(_.unbind()) // trigger unbinding from the port
+    .onComplete(_ => system.terminate()) // and shutdown when done
 
-  val medicalReport = (for {
-    person <- ProtectedDataT(personRepo.getPersonByName("Jane Doe"))
-    medicalRecords <- ProtectedDataT(medicalRecordRepo.getMedicalRecordsByPersonId(person.id))
-  } yield {
-    s"""Medical report
-       |Name: ${person.name}
-       |Address: ${person.address}
-       |
-       |Treatments: ${medicalRecords.map(_.treatment).mkString(", ")}
-       |""".stripMargin
-  }).value
-
-  medicalReport.foreach {
-    protectedReport => println(
-      protectedReport.get(
-        DataProcessingJustification
-          .withPurpose["Some reporting"]
-          .withSubjects["Patients"]
-          .withRecipients["Other doctors"].apply
-      )
-    )
-  }
-
-  cost.foreach {
-    costP => println(
-      costP.get(DataProcessingJustification["Purp", "Subj", "Recps"].apply)
-    )
-  }
-
-  val optT =
-    for {
-      a <- OptionT(Future.successful[Option[Int]](Some(3)))
-      b <- OptionT(f(a))
-    } yield b
-
-
-optT.value.foreach(println)
-  Thread.sleep(400)
-  def f(i: Int): Future[Option[Int]] = Future.successful(Some(i + 2))
 }

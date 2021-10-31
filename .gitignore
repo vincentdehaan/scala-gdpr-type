@@ -11,3 +11,4 @@ slides/*.synctex.gz
 slides/*.toc
 slides/*.vrb
 slides/*.out
+.DS_Store

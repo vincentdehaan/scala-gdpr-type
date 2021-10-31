@@ -15,9 +15,9 @@
   belowskip=2mm,
   showstringspaces=false,
   columns=flexible,
-  basicstyle={\footnotesize\ttfamily},
+  basicstyle={\tiny\ttfamily},
   numbers=none,
-  numberstyle=\footnotesize\color{gray},
+  numberstyle=\tiny\color{gray},
   keywordstyle=\color{blue},
   commentstyle=\color{dkgreen},
   stringstyle=\color{mauve},
@@ -229,12 +229,12 @@ case class MedicalRecord(
 
 
 \end{column}
-\pause
 \vrule
 \begin{column}{0.7\textwidth}  
 
 \begin{lstlisting}[style=myScalastyle,frame=none]
 type ProtectedDataSource[T] = ProtectedData[T, shapeless.::[T, HNil]]  
+
 
 trait PatientRepository {
   def getPatientById: ProtectedDataSource[Patient]
@@ -252,6 +252,157 @@ class PatientRepositoryImpl {
 
 \end{column}
 \end{columns}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Handling lists}
+\begin{columns}
+\begin{column}{0.3\textwidth}
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+case class Patient(
+  id: String,
+  name: String,
+  address: String)
+  
+case class MedicalRecord(
+  id: String,
+  patientId: String,
+  disease: String,
+  treatment: String)
+\end{lstlisting}
+
+
+\end{column}
+\pause
+\vrule
+\begin{column}{0.7\textwidth}  
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+type ProtectedDataSource[T] = ProtectedData[T, shapeless.::[T, HNil]] 
+type ProtectedDataSourceF[F[_], T] = ProtectedData[F[T], shapeless.::[T, HNil]]
+ 
+
+trait PatientRepository {
+  def getPatientById: ProtectedDataSource[Patient]
+}
+
+class PatientRepositoryImpl {
+  def getPatientById: ProtectedDataSource[Patient] =
+    ProtectedData {
+      // get the patient
+    }
+    
+  def getAllPatients: ProtectedDataSourceF[Seq, Patient] =
+    ProtectedData {
+       // get all patients as a Seq[Patient]
+    }
+}
+
+\end{lstlisting}
+
+
+\end{column}
+\end{columns}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Transforming \texttt{ProtectedData}}
+
+Given a \texttt{ProtectedData[Patient, \_]}, how to get a \texttt{ProtectedData} holding a \texttt{String} with the patient's name?
+\pause
+Let's define \texttt{map}:
+\begin{lstlisting}[style=myScalastyle,frame=none]
+def map[U](f: T => U): ProtectedData[U, H] =
+  ProtectedData {
+    f(value)
+  }
+\end{lstlisting}
+\pause
+Now we have:
+\begin{lstlisting}[style=myScalastyle,frame=none]
+val patient: ProtectedData[Patient, Patient :: HNil] = // some protected data
+val name: ProtectedData[String, Patient::HNil] = patient.map(_.name)
+\end{lstlisting}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{How about \texttt{flatMap}?}
+
+Given:
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+case class Patient(id: String, name: String, address: String)
+case class MedicalRecord(id: String, patientId: String, disease: String, treatment: String)
+
+def getPatientByName(name: String): ProtectedDataSource[Patient]
+def getMedicalRecordByPatientId(patientId: String): ProtectedDataSourceF[Seq, MedicalRecord]
+\end{lstlisting}
+
+How to get all records of Mary?
+\pause
+
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+val maryId: ProtectedData[String, Patient::HNil] = getPatientByName("Mary").map(_.patientId)
+
+val maryRecords: ProtectedData[Seq[MedicalRecord], ???] = getMedicalRecordByPatientId(???)
+\end{lstlisting}
+
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{TODO Intermezzo on HLists}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{How about \texttt{flatMap}? II}
+Notice the type of \texttt{val maryRecords}:
+\begin{lstlisting}[style=myScalastyle,frame=none]
+val maryId: ProtectedData[String, Patient::HNil] = getPatientByName("Mary").map(_.patientId)
+
+val maryRecords: ProtectedData[Seq[MedicalRecord], MedicalRecord::Patient::HNil] = getMedicalRecordByPatientId(???)
+\end{lstlisting}
+\pause
+Let's define \texttt{flatMap}:
+\begin{lstlisting}[style=myScalastyle,frame=none]
+class ProtectedData[T, H <: HList] private[scalagdpr](private[scalagdpr] val value: T) {
+  def flatMap[U, H1 <: HList](f: T => ProtectedData[U, H1])(implicit p: Prepend[H, H1]): ProtectedData[U, p.Out] =
+    f(value).asInstanceOf[ProtectedData[U, p.Out]]
+\end{lstlisting}
+\pause
+Now we can write:
+\begin{lstlisting}[style=myScalastyle,frame=none]
+val records: ProtectedData[Seq[MedicalRecord], MedicalRecord::Patient::HNil] = for {
+  maryId <- getPatientByName("Mary").map(_.patientId)
+  maryRecords <- getMedicalRecordByPatientId(maryId)
+} yield maryRecords
+\end{lstlisting}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{How about asynchronous programming?}
+Given:
+\begin{lstlisting}[style=myScalastyle,frame=none]
+case class Patient(id: String, name: String, address: String)
+case class MedicalRecord(id: String, patientId: String, disease: String, treatment: String)
+
+def getPatientByName(name: String): Future[ProtectedDataSource[Patient]]
+def getMedicalRecordByPatientId(patientId: String): Future[ProtectedDataSourceF[Seq, MedicalRecord]]
+\end{lstlisting}
+How to get all records of Mary?
+\pause
+\begin{lstlisting}[style=myScalastyle,frame=none]
+val maryRecord: Future[ProtectedData[MedicalRecord, MedicalRecord::Patient::HNil]] = for {
+  patientIdFut <- 
+}
+\end{lstlisting}
 
 \end{frame}
 
