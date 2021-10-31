@@ -87,13 +87,57 @@ We need to document all our \textbf{processing activities}, but $\ldots$
 \frame{
   \frametitle{A crazy idea}
 
-  Can we export the documentation from the code?
+  Can we extract the documentation from the code?
 }
-\frame{
-  \frametitle{TODO TODO TODO}
+
+\begin{frame}[fragile]
+  \frametitle{The original idea}
+
+Given this code: 
+\begin{columns}
+\begin{column}{0.3\textwidth}
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+trait PatientRepository {
+  @Processing
+  def getById(id: String):
+    Future[Patient]
+}
+\end{lstlisting}
 
 
+\end{column}
+
+\begin{column}{0.7\textwidth}  
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+class PatientApi(patientRepo: PatientRepository) {
+   val thePatient = (patientRepo.getById("someId")
+     : @ProcessingInstance("Justification for the processing"))
 }
+\end{lstlisting}
+
+\end{column}
+\end{columns}
+
+Create a compiler plugin that applies two rules:
+\begin{itemize}
+  \item For each method with a \texttt{@Processing} annotation, we need a \texttt{@ProcessingInstance} annotation at the call site.
+  \item When we find a \texttt{@ProcessingInstance} annotation during compilation, report the purpose.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+  \frametitle{The problem with this approach}
+  
+  \begin{itemize}
+    \item Programs have many layers (services, utils) between API and repository
+    \pause
+    \item Still interested in how to write a compiler plugin? Watch my previous talk online: https://www.youtube.com/watch?v=BZcPGHQlcAE
+  \end{itemize}
+\end{frame}
+
 
 \frame{
   \frametitle{New idea: a \texttt{ProtectedData[\_]} monad } 
@@ -101,6 +145,7 @@ We need to document all our \textbf{processing activities}, but $\ldots$
   \begin{itemize}
   \item Keep the protected data inside the \texttt{ProtectedData[\_]}
   \item Unwrap it at the and, and report it's purpose
+  \item Record the \textit{original} data type in a second type parameter
   \end{itemize}
 
 }
@@ -130,7 +175,7 @@ object DataProcessingJustification {
 \end{frame}
 
 \begin{frame}[fragile]
-\frametitle{TODO TODO The \texttt{DataProcessingReporter}}
+\frametitle{The \texttt{DataProcessingReporter}}
 
 \begin{lstlisting}[style=myScalastyle,frame=none]
 class DataProcessingReporter[Purpose, Subjects, Recipients, H] {}
@@ -138,7 +183,9 @@ class DataProcessingReporter[Purpose, Subjects, Recipients, H] {}
 object DataProcessingReporter {
   implicit def reporter[Purpose, Subjects, Recipients, H <: HList]: DataProcessingReporter[Purpose, Subjects, Recipients, H] =
   macro report_impl[Purpose, Subjects, Recipients, H]
-
+\end{lstlisting}
+\pause
+\begin{lstlisting}[style=myScalastyle,frame=none]
   def report_impl[Purpose, Subjects, Recipients, H](c: Context): c.Expr[DataProcessingReporter[Purpose, Subjects, Recipients, H]] = {
     import c.universe._
     val TypeApply(_, purposeTree :: subjectsTree :: recipientsTree :: hTree :: Nil) = c.macroApplication
@@ -171,7 +218,7 @@ object DataProcessingReporter {
 val protectedData: ProtectedData[Int, T]
 protectedData.get(???)
 \end{lstlisting}
-We need a \footnotesize{\texttt{DataProcessingJustification[H]}} TODO size
+We need a \footnotesize{\texttt{DataProcessingJustification[T]}}
 \pause
 \item
 \begin{lstlisting}[style=myScalastyle,frame=none]
@@ -184,7 +231,6 @@ We define the purpose using \textit{literal types}.
 ProtectedDataJustification["My purpose", "Some subjects", "And recipients"].apply
 \end{lstlisting}
 \footnotesize{\texttt{T}} is inferred to create a \footnotesize{\texttt{DataProcessingJustification[T]}}.
-\pause
 \end{enumerate}
 
 \end{frame}
@@ -237,13 +283,13 @@ type ProtectedDataSource[T] = ProtectedData[T, shapeless.::[T, HNil]]
 
 
 trait PatientRepository {
-  def getPatientById: ProtectedDataSource[Patient]
+  def getPatientById(id: String): ProtectedDataSource[Patient]
 }
 
 class PatientRepositoryImpl {
-  def getPatientById: ProtectedDataSource[Patient] =
+  def getPatientById(id: String): ProtectedDataSource[Patient] =
     ProtectedData {
-      // get the patient
+      dbconnection.get(...)
     }
 }
 
@@ -258,7 +304,7 @@ class PatientRepositoryImpl {
 \begin{frame}[fragile]
 \frametitle{Handling lists}
 \begin{columns}
-\begin{column}{0.3\textwidth}
+\begin{column}{0.2\textwidth}
 
 \begin{lstlisting}[style=myScalastyle,frame=none]
 case class Patient(
@@ -276,8 +322,8 @@ case class MedicalRecord(
 
 \end{column}
 \pause
-\vrule
-\begin{column}{0.7\textwidth}  
+
+\begin{column}{0.8\textwidth}  
 
 \begin{lstlisting}[style=myScalastyle,frame=none]
 type ProtectedDataSource[T] = ProtectedData[T, shapeless.::[T, HNil]] 
@@ -356,7 +402,28 @@ val maryRecords: ProtectedData[Seq[MedicalRecord], ???] = getMedicalRecordByPati
 \end{frame}
 
 \begin{frame}[fragile]
-\frametitle{TODO Intermezzo on HLists}
+\frametitle{Intermezzo on HLists}
+
+\begin{itemize}
+  \item HList = heterogenous list
+  \item part of the Shapeless library
+  \pause
+  \item Can hold values of multiple types:
+  \begin{lstlisting}[style=myScalastyle,frame=none]
+val hlist: String :: Int :: HNil = "foo" :: 42 :: HNil
+\end{lstlisting}
+  \pause
+  \item We have type classes for list operations
+  
+  \begin{lstlisting}[style=myScalastyle,frame=none]
+  val hlist1: String :: Int :: HNil = "foo" :: 42 :: HNil
+  val hlist2: Int :: HNil = 43 :: HNil
+
+  val prepend = implicitly[Prepend[String :: Int :: HNil, Int :: HNil]]
+
+  val newHList = prepend.apply(hlist1, hlist2)
+  \end{lstlisting}
+\end{itemize}
 
 \end{frame}
 
@@ -399,10 +466,93 @@ def getMedicalRecordByPatientId(patientId: String): Future[ProtectedDataSourceF[
 How to get all records of Mary?
 \pause
 \begin{lstlisting}[style=myScalastyle,frame=none]
-val maryRecord: Future[ProtectedData[MedicalRecord, MedicalRecord::Patient::HNil]] = for {
-  patientIdFut <- 
+val maryRecords: Future[ProtectedData[Seq[MedicalRecord], MedicalRecord::Patient::HNil]] = for {
+  protectedPatient <- getPatientByName("Mary")
+  protectedRecord <- ???
+} yield ???
+\end{lstlisting}
+
+\end{frame}
+
+\begin{frame}[fragile]
+Let's create a monad transformer: \texttt{ProtectedDataT}
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+final case class ProtectedDataT[F[_], T, H <: HList](value: F[ProtectedData[T, H]]) {
+  def map[U](f: T => U)(implicit F: Functor[F]): ProtectedDataT[F, U, H] =
+    ProtectedDataT(F.map(value)(pd => pd.map(f)))
+
+  def flatMap[U, H1 <: HList](f: T => ProtectedDataT[F, U, H1])(implicit p: Prepend[H, H1], F: Monad[F]): ProtectedDataT[F, U, p.Out] =
+    flatMapF(a => f(a).value).asInstanceOf[ProtectedDataT[F, U, p.Out]]
+
+  def flatMapF[U, H1 <: HList](f: T => F[ProtectedData[U, H1]])(implicit p: Prepend[H, H1], F: Monad[F]): ProtectedDataT[F, U, p.Out] =
+    ProtectedDataT(F.flatMap(value)(getProtected andThen f)).asInstanceOf[ProtectedDataT[F, U, p.Out]]
+
+  private val getProtected = (pd: ProtectedData[T, H]) => pd.get(DataProcessingJustification.unsafeJustification)
+
 }
 \end{lstlisting}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{How about asynchronous programming? ||}
+Given:
+\begin{lstlisting}[style=myScalastyle,frame=none]
+case class Patient(id: String, name: String, address: String)
+case class MedicalRecord(id: String, patientId: String, disease: String, treatment: String)
+
+def getPatientByName(name: String): Future[ProtectedDataSource[Patient]]
+def getMedicalRecordByPatientId(patientId: String): Future[ProtectedDataSourceF[Seq, MedicalRecord]]
+\end{lstlisting}
+How to get all records of Mary?
+\pause
+\begin{lstlisting}[style=myScalastyle,frame=none]
+val maryRecords: Future[ProtectedData[Seq[MedicalRecord], MedicalRecord::Patient::HNil]] = (for {
+  patient <- ProtectedDataT(getPatientByName("Mary"))
+  records <- ProtectedDataT(getMedicalRecordByPatientId(patient.id))
+} yield records).value
+\end{lstlisting}
+
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{A complete example}
+
+\begin{lstlisting}[style=myScalastyle,frame=none]
+class ReportService(personRepo: PersonRepo, medicalRecordRepo: MedicalRecordRepo) {
+  def getReportByName(name: String): ProtectedDataT[Future, String, Person :: MedicalRecord :: HNil] =
+    for {
+      person <- personRepo.getPersonByName(name)
+      records <- medicalRecordRepo.getMedicalRecordsByPersonId(person.id)
+    } yield s"""Medical report
+               |Name: ${person.name}
+               |Address: ${person.address}
+               |
+               |Treatments: ${records.map(_.treatment).mkString(", ")}
+               |""".stripMargin}
+
+
+class ReportApi (reportService: ReportService) {
+  val route = path("reports") {
+    get {
+      parameters('patientName.as[String]) { patientName =>
+        complete {
+          reportService.getReportByName(patientName).value.map {
+            protectedReport => protectedReport.get(
+              DataProcessingJustification
+                .withPurpose["Generate the patient report"]
+                .withSubjects["Patients"]
+                .withRecipients["Other doctors"].apply
+            )}}}}}}
+
+\end{lstlisting}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Questions?}
+
 
 \end{frame}
 
