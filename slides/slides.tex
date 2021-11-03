@@ -90,6 +90,17 @@ We need to document all our \textbf{processing activities}, but $\ldots$
   Can we extract the documentation from the code?
 }
 
+\frame{
+  \frametitle{The available tools}
+  
+  At compile time, we have three tools:
+  \begin{itemize}
+    \item Types
+    \item Macros
+    \item Compiler plugins
+  \end{itemize}
+}
+
 \begin{frame}[fragile]
   \frametitle{The original idea}
 
@@ -144,10 +155,16 @@ Create a compiler plugin that applies two rules:
 
   \begin{itemize}
   \item Keep the protected data inside the \texttt{ProtectedData[\_]}
-  \item Unwrap it at the and, and report it's purpose
+  \item Unwrap it at the end, and report it's purpose
   \item Record the \textit{original} data type in a second type parameter
   \end{itemize}
 
+}
+
+\frame{
+  \frametitle{The source code...}
+  
+  ... is on GitHub: https://github.com/vincentdehaan/scala-gdpr-type
 }
 
 \begin{frame}[fragile]
